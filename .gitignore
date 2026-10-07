@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+runs/
+*.jsonl
+data/
+*.npz
+kaggle_push/
+.pytest_cache/

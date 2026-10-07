@@ -1,0 +1,13 @@
+{
+  "id": "__USER__/agent-scientist-variance-pilot",
+  "title": "agent-scientist-variance-pilot",
+  "code_file": "pilot_kernel.py",
+  "language": "python",
+  "kernel_type": "script",
+  "is_private": true,
+  "enable_gpu": true,
+  "enable_internet": true,
+  "dataset_sources": [],
+  "competition_sources": [],
+  "kernel_sources": []
+}
