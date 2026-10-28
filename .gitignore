@@ -2,6 +2,7 @@ __pycache__/
 *.pyc
 runs/
 *.jsonl
+!campaigns/**/*.jsonl
 data/
 *.npz
 kaggle_push/

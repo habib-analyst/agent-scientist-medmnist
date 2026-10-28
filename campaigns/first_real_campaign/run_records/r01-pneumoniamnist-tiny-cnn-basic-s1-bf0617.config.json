@@ -1,0 +1,12 @@
+{
+  "run_id": "r01-pneumoniamnist-tiny-cnn-basic-s1-bf0617",
+  "dataset": "pneumoniamnist",
+  "arch": "tiny-cnn",
+  "augment": "basic",
+  "seed": 1,
+  "epochs": 3,
+  "batch_size": 128,
+  "lr": 0.001,
+  "image_size": 28,
+  "extra": {}
+}

@@ -68,6 +68,31 @@ def _get_dataset(name: str, root: str, augment: str, image_size: int):
     return train, test, info
 
 
+def _auc_from_probs(P, Y):
+    """Per-column ROC AUC from probability/label arrays.
+
+    Columns whose labels are all one class are skipped (AUC undefined
+    there; newer scikit-learn returns NaN with a warning instead of
+    raising, so the check is explicit). Returns a list of floats,
+    possibly empty. Pure function — unit-tested without any training.
+    """
+    import numpy as np
+    from sklearn.metrics import roc_auc_score
+
+    aucs = []
+    for c in range(P.shape[1]):
+        col = Y[:, c]
+        if np.unique(col).size < 2:
+            continue
+        try:
+            v = float(roc_auc_score(col, P[:, c]))
+        except ValueError:
+            continue
+        if np.isfinite(v):
+            aucs.append(v)
+    return aucs
+
+
 def _get_model(arch: str, num_classes: int, in_channels: int = 3):
     import torch
     import torchvision
@@ -159,29 +184,33 @@ def run_training(config: Dict[str, Any], data_root: str,
                 all_probs.append(probs)
                 all_labels.append(y)
             else:
-                preds = out.argmax(dim=1).cpu()
+                probs = torch.softmax(out, dim=1).cpu()
+                preds = probs.argmax(dim=1)
                 yv = y.squeeze()
                 correct += (preds == yv).sum().item()
                 total += yv.numel()
+                if task == "binary-class":
+                    # keep positive-class probabilities so test AUC (the
+                    # standard MedMNIST metric) can be reported as well
+                    all_probs.append(probs[:, 1].reshape(-1, 1))
+                    all_labels.append(yv.float().reshape(-1, 1))
     metrics: Dict[str, float] = {"test_accuracy": correct / max(1, total)}
 
-    # per-class AUC for binary/multi-label tasks (cheap, informative)
+    # AUC: per-label for multi-label tasks (mean_auc); positive-class AUC
+    # for binary-class tasks (test_auc). Multi-class tasks report accuracy
+    # only, as before.
     try:
         import numpy as np
 
         if all_probs:
-            from sklearn.metrics import roc_auc_score
-
             P = torch.cat(all_probs).numpy()
             Y = torch.cat(all_labels).numpy()
-            aucs = []
-            for c in range(P.shape[1]):
-                try:
-                    aucs.append(roc_auc_score(Y[:, c], P[:, c]))
-                except ValueError:
-                    pass
+            aucs = _auc_from_probs(P, Y)
             if aucs:
-                metrics["mean_auc"] = float(np.mean(aucs))
+                if task in ("multi-label, binary-class",):
+                    metrics["mean_auc"] = float(np.mean(aucs))
+                else:
+                    metrics["test_auc"] = float(aucs[0])
     except ImportError:
         pass
 

@@ -1,0 +1,41 @@
+{
+  "fingerprint": "75fe52917006758b",
+  "config": {
+    "run_id": "r02-pneumoniamnist-tiny-cnn-basic-s1-c9be3b",
+    "dataset": "pneumoniamnist",
+    "arch": "tiny-cnn",
+    "augment": "basic",
+    "seed": 1,
+    "epochs": 3,
+    "batch_size": 128,
+    "lr": 0.003,
+    "image_size": 28,
+    "extra": {}
+  },
+  "metrics": {
+    "test_accuracy": 0.8493589743589743,
+    "test_auc": 0.9168091168091168
+  },
+  "history": [
+    {
+      "epoch": 0,
+      "train_loss": 0.39680914137814494
+    },
+    {
+      "epoch": 1,
+      "train_loss": 0.196422026970902
+    },
+    {
+      "epoch": 2,
+      "train_loss": 0.14298933986070994
+    }
+  ],
+  "duration_s": 71.77378368377686,
+  "device": "cpu",
+  "finished_utc": "2026-10-28T09:37:47.844875+00:00",
+  "env": {
+    "platform": "Linux-7.0.0-39-generic-x86_64-with-glibc2.39",
+    "python": "3.12.3",
+    "torch": "2.13.0+cpu"
+  }
+}

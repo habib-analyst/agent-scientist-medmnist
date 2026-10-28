@@ -47,6 +47,12 @@ class RuleBasedProvider(LLMProvider):
         Context: question, factors {name: [levels]}, asked (already-run
         factor combos as list of dicts), budget {runs_remaining}, round.
         Returns: {"experiments": [factor-dict, ...], "rationale": str}.
+
+        Optional budget key ``per_round`` caps how many experiments one
+        round may propose, so a campaign iterates over several rounds
+        (analyze -> critique -> propose more) instead of consuming the
+        whole budget in round 0. Absent the key, behaviour is unchanged:
+        propose every fresh combo the remaining budget allows.
         """
         factors: Dict[str, List[Any]] = ctx["factors"]
         asked = {json.dumps(e, sort_keys=True) for e in ctx.get("asked", [])}
@@ -58,13 +64,18 @@ class RuleBasedProvider(LLMProvider):
         for n in names:
             combos = [{**c, n: v} for c in combos for v in factors[n]]
         fresh = [c for c in combos if json.dumps(c, sort_keys=True) not in asked]
-        batch = fresh[: max(0, remaining)]
+        cap = max(0, remaining)
+        per_round = ctx.get("budget", {}).get("per_round")
+        if per_round:
+            cap = min(cap, int(per_round))
+        batch = fresh[:cap]
         return {
             "experiments": batch,
             "rationale": (
                 f"Round {ctx.get('round', 0)}: full-factorial proposal over "
                 f"{len(names)} factors ({len(combos)} combos); {len(fresh)} "
-                f"unasked, proposing {len(batch)} within budget."
+                f"unasked, proposing {len(batch)} within budget"
+                + (f" (per-round cap {int(per_round)})." if per_round else ".")
             ),
         }
 

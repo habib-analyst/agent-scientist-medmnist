@@ -12,6 +12,7 @@ The loop is fully autonomous: it stops only when the Critic says stop
 
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 from typing import Any, Dict, List
@@ -45,17 +46,26 @@ class CampaignRunner:
         experiments = decision["experiments"]
         specs = []
         for i, e in enumerate(experiments):
-            run_id = (f"r{state['round']:02d}-{e['dataset']}-"
-                      f"{e['arch']}-{e['augment']}-s{e['seed']}")
-            specs.append(RunSpec(
-                run_id=run_id,
+            fields = dict(
                 dataset=e["dataset"], arch=e["arch"], augment=e["augment"],
                 seed=int(e["seed"]),
                 epochs=int(e.get("epochs", state["defaults"].get("epochs", 5))),
                 batch_size=int(e.get("batch_size",
-                                     state["defaults"].get("batch_size", 128))),
+                                 state["defaults"].get("batch_size", 128))),
                 lr=float(e.get("lr", state["defaults"].get("lr", 1e-3))),
-            ))
+            )
+            # The run_id MUST be unique per distinct config: the backend
+            # names artefact files by run_id and results are re-attached to
+            # specs by run_id, so two configs sharing an id silently
+            # overwrite each other's files and corrupt each other's
+            # recorded config. The human-readable prefix does not cover
+            # lr/epochs/batch_size, so append a short hash of ALL fields.
+            tag = hashlib.sha256(
+                json.dumps(fields, sort_keys=True).encode()).hexdigest()[:6]
+            run_id = (f"r{state['round']:02d}-{fields['dataset']}-"
+                      f"{fields['arch']}-{fields['augment']}-"
+                      f"s{fields['seed']}-{tag}")
+            specs.append(RunSpec(run_id=run_id, **fields))
         state["_journal"].round_start(state["round"], decision["rationale"])
         state["_journal"].log_proposals([s.config_dict() | {"run_id": s.run_id}
                                          for s in specs])
@@ -92,16 +102,20 @@ class CampaignRunner:
         return {"analysis": analysis}
 
     def _node_critique(self, state: dict) -> dict:
-        decision = self.provider.decide("critique", {
-            "analysis": state["analysis"],
-            "budget": state["budget"],
-            "thresholds": state["thresholds"],
-        })
-        state["_journal"].log_critic(decision["decision"], decision["reason"])
-        # consume budget
+        # Consume this round's spend BEFORE the Critic decides: it must
+        # judge the budget that remains after the spend, not the budget
+        # at the round's start — otherwise a campaign whose budget ends
+        # exactly with its last run needs a trailing empty round (zero
+        # proposals, zero runs) before the Critic notices exhaustion.
         spent = len(state.get("results", []))
         budget = dict(state["budget"])
         budget["runs_remaining"] = max(0, budget.get("runs_remaining", 0) - spent)
+        decision = self.provider.decide("critique", {
+            "analysis": state["analysis"],
+            "budget": budget,
+            "thresholds": state["thresholds"],
+        })
+        state["_journal"].log_critic(decision["decision"], decision["reason"])
         if decision["decision"] == "refine":
             budget["retries_remaining"] = max(
                 0, budget.get("retries_remaining", 0) - 1)
@@ -111,11 +125,12 @@ class CampaignRunner:
                 "done": done}
 
     def _router_after_critique(self, state: dict) -> str:
-        if state.get("done"):
-            return END
-        if state["round"] + 1 >= state["max_rounds"]:
-            return END
-        return "hypothesize"
+        # One graph pass == exactly one round. Iteration across rounds is
+        # owned by CampaignRunner.run()'s manual loop (which increments
+        # state["round"]); routing back to "hypothesize" here as well made
+        # the two loops fight — every cycle inside one graph pass was
+        # journaled under the same round number.
+        return END
 
     def _node_finalize(self, state: dict) -> dict:
         # reached only via max_rounds; synthesize conclusion from analysis
